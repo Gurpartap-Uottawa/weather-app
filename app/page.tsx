@@ -1,65 +1,270 @@
-import Image from "next/image";
+'use client'
+
+import { useEffect, useRef, useState } from 'react'
+import Image from 'next/image'
+import { Search } from 'lucide-react'
+import { SparklesCore } from '@/components/ui/sparkles'
+import { ChatWidget } from '@/components/ui/chat-widget'
+
+interface Condition {
+  text: string
+  icon: string
+  code: number
+}
+
+interface Current {
+  temp_c: number
+  feelslike_c: number
+  humidity: number
+  wind_kph: number
+  uv: number
+  condition: Condition
+}
+
+interface Hour {
+  time_epoch: number
+  temp_c: number
+  condition: Condition
+}
+
+interface Day {
+  maxtemp_c: number
+  mintemp_c: number
+  condition: Condition
+}
+
+interface ForecastDay {
+  date_epoch: number
+  date: string
+  day: Day
+  hour: Hour[]
+}
+
+interface WeatherData {
+  location: { name: string; region: string; country: string }
+  current: Current
+  forecast: { forecastday: ForecastDay[] }
+}
+
+function round(n: number) {
+  return Math.round(n)
+}
+
+function formatHour(epoch: number) {
+  return new Date(epoch * 1000).toLocaleTimeString([], { hour: 'numeric', hour12: true })
+}
+
+function formatDay(epoch: number) {
+  const date = new Date(epoch * 1000)
+  if (date.toDateString() === new Date().toDateString()) return 'Today'
+  return date.toLocaleDateString([], { weekday: 'short' })
+}
+
+function WeatherIcon({ icon, size = 40 }: { icon: string; size?: number }) {
+  return (
+    <Image
+      src={`https:${icon}`}
+      alt=""
+      width={size}
+      height={size}
+      unoptimized
+    />
+  )
+}
 
 export default function Home() {
+  const [weather, setWeather] = useState<WeatherData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [query, setQuery] = useState('auto:ip')
+  const [searchInput, setSearchInput] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    let cancelled = false
+
+    const fetchWeather = async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const res = await fetch(`/api/weather?q=${encodeURIComponent(query)}`)
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}))
+          throw new Error(d?.detail ?? 'Not found')
+        }
+        const data = await res.json()
+        if (!cancelled) setWeather(data)
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load weather data.')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    fetchWeather()
+    return () => { cancelled = true }
+  }, [query])
+
+  const handleSearch = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    const trimmed = searchInput.trim()
+    if (!trimmed) return
+    setQuery(trimmed)
+    setSearchInput('')
+    inputRef.current?.blur()
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <p className="text-white/70 text-lg animate-pulse">Fetching your weather...</p>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-8">
+        <div className="text-center text-white space-y-4">
+          <p className="text-5xl">⚠️</p>
+          <p className="text-white/70 text-base">{error}</p>
+          <form onSubmit={handleSearch} className="flex items-center gap-2 justify-center mt-2">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-white/40" />
+              <input
+                ref={inputRef}
+                type="text"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder="Try another city..."
+                className="bg-white/10 rounded-full pl-9 pr-4 py-2 text-sm text-white placeholder:text-white/40 border border-white/20 focus:outline-none focus:border-white/40 w-52"
+              />
+            </div>
+            <button
+              type="submit"
+              className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-full transition-colors"
+            >
+              Search
+            </button>
+          </form>
+        </div>
+      </div>
+    )
+  }
+
+  if (!weather) return null
+
+  const { location, current, forecast } = weather
+  const today = forecast.forecastday[0]
+  const locationLabel = [location.name, location.region, location.country]
+    .filter(Boolean)
+    .join(', ')
+
+  const now = Date.now()
+  const futureHours = forecast.forecastday
+    .flatMap((d) => d.hour)
+    .filter((h) => h.time_epoch * 1000 >= now)
+    .slice(0, 24)
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <main className="min-h-screen bg-slate-950 text-white relative overflow-hidden">
+      <div className="absolute inset-0 w-full h-full">
+        <SparklesCore
+          id="weather-sparkles"
+          background="transparent"
+          minSize={0.4}
+          maxSize={1.2}
+          particleDensity={80}
+          className="w-full h-full"
+          particleColor="#FFFFFF"
+          speed={1}
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+      </div>
+
+      <div className="relative z-10 max-w-xl mx-auto px-4 py-10 flex flex-col gap-5">
+
+        {/* Search bar */}
+        <form onSubmit={handleSearch} className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-white/40" />
+            <input
+              ref={inputRef}
+              type="text"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="Search city..."
+              className="w-full bg-white/10 backdrop-blur-sm rounded-full pl-9 pr-4 py-2.5 text-sm text-white placeholder:text-white/40 border border-white/10 focus:outline-none focus:border-white/30 transition-colors"
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+          </div>
+          <button
+            type="submit"
+            className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-5 py-2.5 rounded-full transition-colors shrink-0"
           >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
-  );
+            Search
+          </button>
+        </form>
+
+        {/* Current weather */}
+        <section className="flex flex-col items-center text-center pt-2">
+          <p className="text-white/50 text-xs uppercase tracking-widest mb-1">
+            {locationLabel}
+          </p>
+          <WeatherIcon icon={current.condition.icon} size={88} />
+          <p className="text-lg text-white/70 capitalize -mt-2 mb-3">{current.condition.text}</p>
+          <p className="text-9xl font-extralight leading-none">{round(current.temp_c)}°</p>
+          <div className="flex items-center gap-5 mt-5 text-sm text-white/60">
+            <span>Feels like <span className="text-white/90">{round(current.feelslike_c)}°</span></span>
+            <span>H: <span className="text-white/90">{round(today.day.maxtemp_c)}°</span></span>
+            <span>L: <span className="text-white/90">{round(today.day.mintemp_c)}°</span></span>
+          </div>
+        </section>
+
+        {/* Hourly forecast */}
+        <section className="bg-white/10 backdrop-blur-sm rounded-2xl px-4 pt-3 pb-4">
+          <p className="text-xs uppercase tracking-widest text-white/40 mb-3">Hourly Forecast</p>
+          <div className="flex gap-3 overflow-x-auto no-scrollbar">
+            {futureHours.map((h) => (
+              <div key={h.time_epoch} className="flex flex-col items-center gap-1 min-w-[52px]">
+                <span className="text-xs text-white/50">{formatHour(h.time_epoch)}</span>
+                <WeatherIcon icon={h.condition.icon} size={34} />
+                <span className="text-sm font-medium">{round(h.temp_c)}°</span>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* 3-day forecast */}
+        <section className="bg-white/10 backdrop-blur-sm rounded-2xl px-4 pt-3 pb-2">
+          <p className="text-xs uppercase tracking-widest text-white/40 mb-1">3-Day Forecast</p>
+          <div className="divide-y divide-white/10">
+            {forecast.forecastday.map((d) => (
+              <div key={d.date_epoch} className="flex items-center justify-between py-3">
+                <span className="w-14 text-sm text-white/80 font-medium">{formatDay(d.date_epoch)}</span>
+                <div className="flex items-center gap-2 flex-1 px-2">
+                  <WeatherIcon icon={d.day.condition.icon} size={30} />
+                  <span className="text-xs text-white/50 capitalize truncate">{d.day.condition.text}</span>
+                </div>
+                <div className="flex items-center gap-3 text-sm">
+                  <span className="text-white/40">L: {round(d.day.mintemp_c)}°</span>
+                  <span className="font-semibold">H: {round(d.day.maxtemp_c)}°</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+      </div>
+
+      <ChatWidget
+        weatherContext={{
+          location: locationLabel,
+          temp: round(current.temp_c),
+          feelsLike: round(current.feelslike_c),
+          condition: current.condition.text,
+          high: round(today.day.maxtemp_c),
+          low: round(today.day.mintemp_c),
+        }}
+      />
+    </main>
+  )
 }
