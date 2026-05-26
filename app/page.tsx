@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import Image from 'next/image'
-import { Search } from 'lucide-react'
+import { LocateFixed, Search } from 'lucide-react'
 import { SparklesCore } from '@/components/ui/sparkles'
 import { ChatWidget } from '@/components/ui/chat-widget'
 
@@ -76,11 +76,30 @@ export default function Home() {
   const [weather, setWeather] = useState<WeatherData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [query, setQuery] = useState('auto:ip')
+  const [query, setQuery] = useState<string | null>(null)
+  const [gpsQuery, setGpsQuery] = useState<string | null>(null)
   const [searchInput, setSearchInput] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
 
+  // Get GPS location on mount, fall back to IP detection if denied
   useEffect(() => {
+    if (!navigator.geolocation) {
+      setQuery('auto:ip')
+      return
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const q = `${pos.coords.latitude},${pos.coords.longitude}`
+        setGpsQuery(q)
+        setQuery(q)
+      },
+      () => setQuery('auto:ip'),
+      { timeout: 8000 }
+    )
+  }, [])
+
+  useEffect(() => {
+    if (!query) return
     let cancelled = false
 
     const fetchWeather = async () => {
@@ -105,7 +124,7 @@ export default function Home() {
     return () => { cancelled = true }
   }, [query])
 
-  const handleSearch = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSearch = (e: React.SyntheticEvent) => {
     e.preventDefault()
     const trimmed = searchInput.trim()
     if (!trimmed) return
@@ -114,10 +133,28 @@ export default function Home() {
     inputRef.current?.blur()
   }
 
-  if (loading) {
+  const handleMyLocation = () => {
+    if (gpsQuery) {
+      setQuery(gpsQuery)
+      return
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const q = `${pos.coords.latitude},${pos.coords.longitude}`
+        setGpsQuery(q)
+        setQuery(q)
+      },
+      () => setQuery('auto:ip'),
+      { timeout: 8000 }
+    )
+  }
+
+  if (!query || loading) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <p className="text-white/70 text-lg animate-pulse">Fetching your weather...</p>
+        <p className="text-white/70 text-lg animate-pulse">
+          {!query ? 'Detecting your location…' : 'Fetching your weather…'}
+        </p>
       </div>
     )
   }
@@ -196,6 +233,16 @@ export default function Home() {
               className="w-full bg-white/10 backdrop-blur-sm rounded-full pl-9 pr-4 py-2.5 text-sm text-white placeholder:text-white/40 border border-white/10 focus:outline-none focus:border-white/30 transition-colors"
             />
           </div>
+          {gpsQuery && query !== gpsQuery && (
+            <button
+              type="button"
+              onClick={handleMyLocation}
+              title="Back to my location"
+              className="bg-white/10 hover:bg-white/20 text-white/70 hover:text-white p-2.5 rounded-full transition-colors shrink-0"
+            >
+              <LocateFixed className="size-4" />
+            </button>
+          )}
           <button
             type="submit"
             className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-5 py-2.5 rounded-full transition-colors shrink-0"
